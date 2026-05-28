@@ -1,0 +1,45 @@
+import { Router } from 'express';
+import type { Request, Response } from 'express';
+import { z } from 'zod';
+import { supabaseAdmin } from '../services/supabaseAdmin';
+
+export const usersRouter = Router();
+
+const styleProfileSchema = z.object({
+  preferred_styles: z.array(z.string()).optional(),
+  preferred_colors: z.array(z.string()).optional(),
+  avoided_colors: z.array(z.string()).optional(),
+  body_shape: z.string().optional(),
+  style_icons: z.array(z.string()).optional(),
+});
+
+// GET /api/users/me
+usersRouter.get('/me', async (_req: Request, res: Response) => {
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('*')
+    .eq('id', res.locals.userId)
+    .single();
+
+  if (error) { res.status(404).json({ data: null, error: error.message }); return; }
+  res.json({ data, error: null });
+});
+
+// PATCH /api/users/me
+usersRouter.patch('/me', async (req: Request, res: Response) => {
+  const parsed = styleProfileSchema.safeParse(req.body.style_profile);
+  if (!parsed.success) {
+    res.status(400).json({ data: null, error: parsed.error.message });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .update({ style_profile: parsed.data })
+    .eq('id', res.locals.userId)
+    .select()
+    .single();
+
+  if (error) { res.status(400).json({ data: null, error: error.message }); return; }
+  res.json({ data, error: null });
+});

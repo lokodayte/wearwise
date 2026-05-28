@@ -1,0 +1,16 @@
+{
+  "name": "wearwise",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "app",
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "app": "npm run start --workspace=app",
+    "backend": "npm run dev --workspace=backend",
+    "shared:build": "npm run build --workspace=shared",
+    "type-check": "npm run type-check --workspaces --if-present"
+  }
+}
