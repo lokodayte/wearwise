@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import sharp from 'sharp';
 import type { GarmentCategory, GarmentFormality } from '@wearwise/shared';
 
 // ---------------------------------------------------------------------------
@@ -45,14 +46,21 @@ const FALLBACK_TAGS: GarmentTags = {
  * Retries once on failure before returning fallback tags.
  */
 export async function tagGarmentWithAI(pngBuffer: Buffer): Promise<GarmentTags> {
-  const base64 = pngBuffer.toString('base64');
-  const dataUrl = `data:image/png;base64,${base64}`;
+  // Shrink to 512px max-side before encoding — detail: 'low' uses a fixed 512×512
+  // tile anyway, so sending anything larger wastes bandwidth with no quality gain.
+  const resized = await sharp(pngBuffer)
+    .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+
+  const base64 = resized.toString('base64');
+  const dataUrl = `data:image/jpeg;base64,${base64}`;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        max_tokens: 300,
+        model: 'gpt-4o-mini',
+        max_tokens: 250,
         messages: [
           {
             role: 'system',
@@ -63,7 +71,7 @@ export async function tagGarmentWithAI(pngBuffer: Buffer): Promise<GarmentTags> 
             content: [
               {
                 type: 'image_url',
-                image_url: { url: dataUrl, detail: 'high' },
+                image_url: { url: dataUrl, detail: 'low' },
               },
             ],
           },

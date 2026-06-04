@@ -91,11 +91,11 @@ async function processSingleFile(
     cleanBuffer = file.buffer;
   }
 
-  // Step 2 — AI tagging (retry-once is handled inside tagGarmentWithAI)
-  const tags = await tagGarmentWithAI(cleanBuffer);
-
-  // Step 3 — Upload clean PNG to R2
-  const imageUrl = await uploadGarmentImage(cleanBuffer, userId);
+  // Steps 2 + 3 — AI tagging and R2 upload run in parallel
+  const [tags, imageUrl] = await Promise.all([
+    tagGarmentWithAI(cleanBuffer),
+    uploadGarmentImage(cleanBuffer, userId),
+  ]);
 
   // Step 4 — Persist garment record in Supabase
   const { data: garment, error: dbError } = await supabaseAdmin
