@@ -26,7 +26,7 @@ import { ItemEditSheet } from '../components/ItemEditSheet';
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const { width: SCREEN_W } = Dimensions.get('window');
 
 const C = {
   bg: '#0D0D0D',
@@ -38,15 +38,12 @@ const C = {
   textDark: '#1A1A1A',
   textSecondary: '#6B6B6B',
   textTertiary: '#9B9B9B',
-  accent: '#FFFFFF',
   accentDark: '#1A1A1A',
   green: '#4CAF80',
   red: '#E05555',
   chipBg: '#F0EFE9',
   chipText: '#5A5A52',
   overlay: 'rgba(0,0,0,0.55)',
-  progressTrack: 'rgba(255,255,255,0.15)',
-  progressFill: '#FFFFFF',
 } as const;
 
 const SHADOW = Platform.select({
@@ -79,13 +76,13 @@ export default function ScanScreen({ onDone, onManualAdd }: Props) {
     processedCount,
     pickPhotos,
     removePhoto,
+    addCameraPhoto,
     startScan,
     updateItem,
     confirmAll,
     reset,
   } = useScanFlow();
 
-  // State transitions — fade between the 3 panels
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const prevState = useRef(scanState);
 
@@ -99,7 +96,6 @@ export default function ScanScreen({ onDone, onManualAdd }: Props) {
     }
   }, [scanState]);
 
-  // Bottom sheet state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const handleSaveEdit = useCallback(
@@ -124,6 +120,7 @@ export default function ScanScreen({ onDone, onManualAdd }: Props) {
               photos={photos}
               onPickPhotos={pickPhotos}
               onRemovePhoto={removePhoto}
+              onCameraCapture={addCameraPhoto}
               onStartScan={startScan}
               onManualAdd={onManualAdd}
             />
@@ -145,7 +142,6 @@ export default function ScanScreen({ onDone, onManualAdd }: Props) {
           )}
         </Animated.View>
 
-        {/* Bottom sheet (always rendered, controlled by item prop) */}
         <ItemEditSheet
           item={editingIndex !== null ? items[editingIndex] ?? null : null}
           onSave={handleSaveEdit}
@@ -157,13 +153,14 @@ export default function ScanScreen({ onDone, onManualAdd }: Props) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STATE 1 — Select photos
+// STATE 1 — Select photos  (camera + library)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface SelectStateProps {
   photos: { uri: string; assetId: string }[];
   onPickPhotos: () => void;
   onRemovePhoto: (id: string) => void;
+  onCameraCapture: (photo: { uri: string; assetId: string }) => void;
   onStartScan: () => void;
   onManualAdd?: () => void;
 }
@@ -172,13 +169,39 @@ function SelectState({
   photos,
   onPickPhotos,
   onRemovePhoto,
+  onCameraCapture,
   onStartScan,
   onManualAdd,
 }: SelectStateProps) {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [cameraReady, setCameraReady] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
 
   const hasPhotos = photos.length > 0;
+
+  const handleCapture = useCallback(async () => {
+    if (!cameraRef.current || capturing) return;
+    setCapturing(true);
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.85,
+        skipProcessing: false,
+      });
+      if (photo?.uri) {
+        onCameraCapture({ uri: photo.uri, assetId: `camera-${Date.now()}` });
+      }
+    } catch (err) {
+      console.warn('[ScanScreen] takePictureAsync failed:', err);
+    } finally {
+      setCapturing(false);
+    }
+  }, [capturing, onCameraCapture]);
+
+  const handlePickLibrary = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+    onPickPhotos();
+  }, [onPickPhotos]);
 
   return (
     <View style={styles.fill}>
@@ -186,42 +209,66 @@ function SelectState({
       <View style={styles.cameraContainer}>
         {cameraPermission?.granted ? (
           <CameraView
+            ref={cameraRef}
             style={StyleSheet.absoluteFill}
             facing="back"
-            onCameraReady={() => setCameraReady(true)}
           />
         ) : (
           <View style={styles.cameraFallback}>
             <Text style={styles.cameraFallbackEmoji}>📷</Text>
             <Text style={styles.cameraFallbackText}>
               {cameraPermission?.canAskAgain
-                ? 'Allow camera for live view'
-                : 'Camera access denied'}
+                ? 'Allow camera to take photos of your clothes'
+                : 'Camera access denied — use photo library below'}
             </Text>
             {cameraPermission?.canAskAgain && (
-              <TouchableOpacity
-                style={styles.cameraPermBtn}
-                onPress={requestCameraPermission}
-              >
+              <TouchableOpacity style={styles.cameraPermBtn} onPress={requestCameraPermission}>
                 <Text style={styles.cameraPermBtnText}>Allow camera</Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
-        {/* Dark gradient overlay */}
-        <View style={styles.cameraOverlayTop} />
-        <View style={styles.cameraOverlayBottom} />
-
         {/* Top bar */}
         <SafeAreaView style={styles.cameraTopBar} edges={['top']}>
           <Text style={styles.cameraTitle}>Scan wardrobe</Text>
-          <Text style={styles.cameraSubtitle}>Select photos from your library</Text>
+          <Text style={styles.cameraSubtitle}>Tap ● to take a photo, or add from library</Text>
         </SafeAreaView>
+
+        {/* Shutter + library buttons */}
+        {cameraPermission?.granted && (
+          <View style={styles.shutterRow}>
+            {/* Library shortcut on left */}
+            <TouchableOpacity style={styles.libraryBtn} onPress={handlePickLibrary}>
+              <Text style={styles.libraryBtnEmoji}>🖼️</Text>
+              <Text style={styles.libraryBtnLabel}>Library</Text>
+            </TouchableOpacity>
+
+            {/* Shutter in center */}
+            <TouchableOpacity
+              style={[styles.shutterOuter, capturing && styles.shutterCapturing]}
+              onPress={handleCapture}
+              activeOpacity={0.8}
+              disabled={capturing}
+            >
+              <View style={styles.shutterInner} />
+            </TouchableOpacity>
+
+            {/* Spacer to balance layout */}
+            <View style={{ width: 72 }} />
+          </View>
+        )}
       </View>
 
       {/* Bottom panel */}
       <View style={styles.selectBottom}>
+        {/* If no camera permission, show library button prominently */}
+        {!cameraPermission?.granted && (
+          <TouchableOpacity style={styles.libraryFullBtn} onPress={handlePickLibrary}>
+            <Text style={styles.libraryFullBtnText}>📁  Add from photo library</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Preview strip */}
         {hasPhotos && (
           <ScrollView
@@ -241,25 +288,24 @@ function SelectState({
                 </TouchableOpacity>
               </View>
             ))}
-            {/* Add more */}
-            <TouchableOpacity style={styles.addMoreThumb} onPress={onPickPhotos}>
+            <TouchableOpacity style={styles.addMoreThumb} onPress={handlePickLibrary}>
               <Text style={styles.addMoreText}>+</Text>
             </TouchableOpacity>
           </ScrollView>
         )}
 
-        {/* Primary action */}
-        <TouchableOpacity
-          style={[styles.primaryBtn, !hasPhotos && styles.primaryBtnOutline]}
-          onPress={hasPhotos ? onStartScan : onPickPhotos}
-          activeOpacity={0.85}
-        >
-          <Text style={[styles.primaryBtnText, !hasPhotos && styles.primaryBtnTextOutline]}>
-            {hasPhotos
-              ? `Scan ${photos.length} item${photos.length !== 1 ? 's' : ''} with AI`
-              : 'Select photos'}
-          </Text>
-        </TouchableOpacity>
+        {/* Primary CTA */}
+        {hasPhotos ? (
+          <TouchableOpacity style={styles.primaryBtn} onPress={onStartScan} activeOpacity={0.85}>
+            <Text style={styles.primaryBtnText}>
+              Scan {photos.length} item{photos.length !== 1 ? 's' : ''} with AI
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.primaryBtnOutline} onPress={handlePickLibrary} activeOpacity={0.85}>
+            <Text style={styles.primaryBtnTextOutline}>Add from photo library</Text>
+          </TouchableOpacity>
+        )}
 
         {onManualAdd && (
           <TouchableOpacity style={styles.secondaryLink} onPress={onManualAdd}>
@@ -300,24 +346,15 @@ function ScanningState({ items, total, processed }: ScanningStateProps) {
 
   return (
     <SafeAreaView style={styles.scanningRoot} edges={['top', 'bottom']}>
-      <Text style={styles.scanningTitle}>Analyzing your clothes...</Text>
-      <Text style={styles.scanningSubtitle}>
-        AI is tagging each item — this takes a moment
-      </Text>
+      <Text style={styles.scanningTitle}>Analyzing your clothes…</Text>
+      <Text style={styles.scanningSubtitle}>AI is tagging each item</Text>
 
-      {/* Progress bar */}
       <View style={styles.progressTrack}>
         <Animated.View style={[styles.progressFill, { width: barWidth }]} />
       </View>
-      <Text style={styles.progressCount}>
-        {processed} of {total} items scanned
-      </Text>
+      <Text style={styles.progressCount}>{processed} of {total} items scanned</Text>
 
-      {/* Live feed grid */}
-      <ScrollView
-        contentContainerStyle={styles.scanGrid}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.scanGrid} showsVerticalScrollIndicator={false}>
         {items.map((item, i) => (
           <ScanningTile key={i} item={item} index={i} />
         ))}
@@ -331,7 +368,6 @@ function ScanningTile({ item, index }: { item: ScannedItem; index: number }) {
   const checkScale = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Staggered fade-in
     Animated.timing(fadeIn, {
       toValue: 1,
       duration: 300,
@@ -342,50 +378,30 @@ function ScanningTile({ item, index }: { item: ScannedItem; index: number }) {
 
   useEffect(() => {
     if (item.status === 'done') {
-      Animated.spring(checkScale, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }).start();
+      Animated.spring(checkScale, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }).start();
     }
   }, [item.status]);
-
-  const isProcessing = item.status === 'processing';
-  const isDone = item.status === 'done';
-  const isError = item.status === 'error';
 
   return (
     <Animated.View style={[styles.scanTile, { opacity: fadeIn }]}>
       <View style={styles.scanTilePhoto}>
         <Image source={{ uri: item.localUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-
-        {/* Processing shimmer overlay */}
-        {isProcessing && (
-          <View style={styles.scanTileOverlay}>
-            <ProcessingDots />
-          </View>
+        {item.status === 'processing' && (
+          <View style={styles.scanTileOverlay}><ProcessingDots /></View>
         )}
-
-        {/* Done checkmark */}
-        {isDone && (
-          <Animated.View
-            style={[styles.scanTileOverlay, styles.scanTileDone, { transform: [{ scale: checkScale }] }]}
-          >
+        {item.status === 'done' && (
+          <Animated.View style={[styles.scanTileOverlay, styles.scanTileDone, { transform: [{ scale: checkScale }] }]}>
             <Text style={styles.checkmark}>✓</Text>
           </Animated.View>
         )}
-
-        {/* Error */}
-        {isError && (
+        {item.status === 'error' && (
           <View style={[styles.scanTileOverlay, styles.scanTileError]}>
             <Text style={styles.errorMark}>!</Text>
           </View>
         )}
       </View>
-
       <Text style={styles.scanTileLabel} numberOfLines={2}>
-        {item.status === 'pending' ? '...' : categoryLabel(item)}
+        {item.status === 'pending' ? '…' : categoryLabel(item)}
       </Text>
     </Animated.View>
   );
@@ -404,9 +420,7 @@ function ProcessingDots() {
           Animated.timing(anim, { toValue: 0.3, duration: 400, useNativeDriver: true }),
         ])
       );
-    const a1 = pulse(dot1, 0);
-    const a2 = pulse(dot2, 133);
-    const a3 = pulse(dot3, 266);
+    const a1 = pulse(dot1, 0); const a2 = pulse(dot2, 133); const a3 = pulse(dot3, 266);
     a1.start(); a2.start(); a3.start();
     return () => { a1.stop(); a2.stop(); a3.stop(); };
   }, []);
@@ -438,35 +452,21 @@ function ReviewState({ items, onTilePress, onConfirm, onScanMore }: ReviewStateP
     <SafeAreaView style={styles.reviewRoot} edges={['top', 'bottom']}>
       <View style={styles.reviewHeader}>
         <Text style={styles.reviewTitle}>Review your wardrobe</Text>
-        <Text style={styles.reviewSubtitle}>
-          Tap any item to correct AI tags
-        </Text>
+        <Text style={styles.reviewSubtitle}>Tap any item to correct AI tags</Text>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.reviewGrid}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView contentContainerStyle={styles.reviewGrid} showsVerticalScrollIndicator={false}>
         {items.map((item, i) => (
-          <ReviewTile
-            key={i}
-            item={item}
-            onPress={() => item.status === 'done' && onTilePress(i)}
-          />
+          <ReviewTile key={i} item={item} onPress={() => item.status === 'done' && onTilePress(i)} />
         ))}
       </ScrollView>
 
       <View style={styles.reviewFooter}>
-        <TouchableOpacity
-          style={styles.confirmBtn}
-          onPress={onConfirm}
-          activeOpacity={0.85}
-        >
+        <TouchableOpacity style={styles.confirmBtn} onPress={onConfirm} activeOpacity={0.85}>
           <Text style={styles.confirmBtnText}>
             Add {doneCount} item{doneCount !== 1 ? 's' : ''} to wardrobe
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={styles.scanMoreBtn} onPress={onScanMore} activeOpacity={0.75}>
           <Text style={styles.scanMoreText}>Scan more items</Text>
         </TouchableOpacity>
@@ -491,25 +491,14 @@ function ReviewTile({ item, onPress }: { item: ScannedItem; onPress: () => void 
         style={[styles.reviewTileImg, { height: tileW }]}
         resizeMode="cover"
       />
-
       <View style={styles.reviewTileInfo}>
         <View style={styles.reviewChipRow}>
-          {item.category ? (
-            <View style={styles.reviewChip}>
-              <Text style={styles.reviewChipText}>{item.category}</Text>
-            </View>
-          ) : null}
-          {item.color ? (
-            <View style={[styles.reviewChip, styles.reviewColorChip]}>
-              <Text style={styles.reviewChipText}>{item.color}</Text>
-            </View>
-          ) : null}
+          {item.category ? <View style={styles.reviewChip}><Text style={styles.reviewChipText}>{item.category}</Text></View> : null}
+          {item.color ? <View style={[styles.reviewChip, styles.reviewColorChip]}><Text style={styles.reviewChipText}>{item.color}</Text></View> : null}
         </View>
-        {isError ? (
-          <Text style={styles.reviewErrText}>Scan failed — tap to skip</Text>
-        ) : (
-          <Text style={styles.reviewEditHint}>Tap to edit ›</Text>
-        )}
+        {isError
+          ? <Text style={styles.reviewErrText}>Scan failed</Text>
+          : <Text style={styles.reviewEditHint}>Tap to edit ›</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -523,203 +512,154 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   fill: { flex: 1 },
 
-  // ── State 1: Select ──────────────────────────────
-  cameraContainer: {
-    flex: 1,
-    backgroundColor: '#111',
-    overflow: 'hidden',
-  },
+  // Camera
+  cameraContainer: { flex: 1, backgroundColor: '#111', overflow: 'hidden' },
   cameraFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#111',
-    gap: 12,
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#111', gap: 12,
   },
   cameraFallbackEmoji: { fontSize: 48 },
   cameraFallbackText: { color: 'rgba(255,255,255,0.6)', fontSize: 15, textAlign: 'center', paddingHorizontal: 32 },
   cameraPermBtn: {
     backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20,
   },
   cameraPermBtnText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
-  cameraOverlayTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 120,
-    backgroundColor: 'transparent',
-    // gradient via opacity layers
-    opacity: 0.6,
-  },
-  cameraOverlayBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 180,
-    backgroundColor: C.overlay,
-  },
+
   cameraTopBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 12,
+    position: 'absolute', top: 0, left: 0, right: 0,
+    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   cameraTitle: { fontSize: 20, fontWeight: '700', color: '#FFF', letterSpacing: -0.3 },
-  cameraSubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
+  cameraSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
 
+  // Shutter
+  shutterRow: {
+    position: 'absolute',
+    bottom: 24,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  shutterOuter: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    borderColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutterCapturing: { opacity: 0.5 },
+  shutterInner: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#FFF',
+  },
+  libraryBtn: {
+    width: 72,
+    alignItems: 'center',
+    gap: 4,
+  },
+  libraryBtnEmoji: { fontSize: 28 },
+  libraryBtnLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', fontWeight: '500' },
+
+  // Bottom panel
   selectBottom: {
-    backgroundColor: C.bg,
+    backgroundColor: C.bgLight,
     paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'ios' ? 36 : 24,
     gap: 12,
   },
+  libraryFullBtn: {
+    backgroundColor: '#F0EFE9',
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  libraryFullBtnText: { fontSize: 15, fontWeight: '600', color: C.accentDark },
+
   previewStrip: { gap: 10, paddingRight: 8 },
   previewThumb: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#E0E0D8',
+    width: 80, height: 80, borderRadius: 12,
+    overflow: 'hidden', backgroundColor: '#E0E0D8',
   },
   removeBtn: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    position: 'absolute', top: 4, right: 4,
+    width: 20, height: 20, borderRadius: 10,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   removeBtnText: { color: '#FFF', fontSize: 9, fontWeight: '700' },
   addMoreThumb: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#CCCCC4',
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 80, height: 80, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#CCCCC4', borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center',
   },
   addMoreText: { fontSize: 28, color: '#AAAAAA' },
 
   primaryBtn: {
-    backgroundColor: C.accentDark,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
+    backgroundColor: C.accentDark, borderRadius: 14,
+    paddingVertical: 16, alignItems: 'center',
   },
   primaryBtnOutline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: C.accentDark,
+    borderRadius: 14, paddingVertical: 16, alignItems: 'center',
+    borderWidth: 1.5, borderColor: C.accentDark,
   },
   primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  primaryBtnTextOutline: { color: C.accentDark },
+  primaryBtnTextOutline: { color: C.accentDark, fontSize: 16, fontWeight: '700' },
   secondaryLink: { alignItems: 'center', paddingVertical: 4 },
   secondaryLinkText: { fontSize: 14, color: C.textSecondary, textDecorationLine: 'underline' },
 
-  // ── State 2: Scanning ────────────────────────────
-  scanningRoot: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 20 },
-  scanningTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: C.textDark,
-    marginTop: 24,
-    letterSpacing: -0.4,
-  },
+  // Scanning state
+  scanningRoot: { flex: 1, backgroundColor: C.bgLight, paddingHorizontal: 20 },
+  scanningTitle: { fontSize: 24, fontWeight: '700', color: C.textDark, marginTop: 24, letterSpacing: -0.4 },
   scanningSubtitle: { fontSize: 14, color: C.textSecondary, marginTop: 4, marginBottom: 20 },
-
-  progressTrack: {
-    height: 6,
-    backgroundColor: '#E8E8E4',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 6,
-    backgroundColor: C.accentDark,
-    borderRadius: 3,
-  },
+  progressTrack: { height: 6, backgroundColor: '#E8E8E4', borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: 6, backgroundColor: C.accentDark, borderRadius: 3 },
   progressCount: { fontSize: 13, color: C.textTertiary, marginTop: 8, marginBottom: 20 },
 
-  scanGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  scanTile: {
-    width: (SCREEN_W - 40 - 36) / 4,
-    alignItems: 'center',
-  },
+  scanGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  scanTile: { width: (SCREEN_W - 40 - 36) / 4, alignItems: 'center' },
   scanTilePhoto: {
     width: (SCREEN_W - 40 - 36) / 4,
     height: (SCREEN_W - 40 - 36) / 4,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: '#E8E8E4',
+    borderRadius: 10, overflow: 'hidden', backgroundColor: '#E8E8E4',
   },
   scanTileOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   scanTileDone: { backgroundColor: 'rgba(76,175,128,0.75)' },
   scanTileError: { backgroundColor: 'rgba(224,85,85,0.75)' },
   checkmark: { fontSize: 22, color: '#FFF', fontWeight: '700' },
   errorMark: { fontSize: 22, color: '#FFF', fontWeight: '700' },
-  scanTileLabel: {
-    fontSize: 11,
-    color: C.textSecondary,
-    marginTop: 5,
-    textAlign: 'center',
-    lineHeight: 14,
-  },
+  scanTileLabel: { fontSize: 11, color: C.textSecondary, marginTop: 5, textAlign: 'center', lineHeight: 14 },
   dotsRow: { flexDirection: 'row', gap: 5, alignItems: 'center' },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF' },
 
-  // ── State 3: Review ──────────────────────────────
+  // Review state
   reviewRoot: { flex: 1, backgroundColor: C.bgLight },
   reviewHeader: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
   reviewTitle: { fontSize: 24, fontWeight: '700', color: C.textDark, letterSpacing: -0.4 },
   reviewSubtitle: { fontSize: 14, color: C.textSecondary, marginTop: 3 },
-
   reviewGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    gap: 16,
-    paddingBottom: 16,
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: 16, gap: 16, paddingBottom: 16,
   },
-  reviewTile: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: C.cardLight,
-    ...SHADOW,
-  },
+  reviewTile: { borderRadius: 16, overflow: 'hidden', backgroundColor: C.cardLight, ...SHADOW },
   reviewTileError: { opacity: 0.5 },
   reviewTileImg: { width: '100%', backgroundColor: '#E8E8E4' },
   reviewTileInfo: { padding: 10 },
   reviewChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
-  reviewChip: {
-    backgroundColor: C.chipBg,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
+  reviewChip: { backgroundColor: C.chipBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   reviewColorChip: { backgroundColor: '#E8E8E4' },
   reviewChipText: { fontSize: 11, color: C.chipText, fontWeight: '500', textTransform: 'capitalize' },
   reviewEditHint: { fontSize: 11, color: C.textTertiary },
@@ -734,12 +674,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#EFEFEB',
   },
-  confirmBtn: {
-    backgroundColor: C.accentDark,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
+  confirmBtn: { backgroundColor: C.accentDark, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
   confirmBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   scanMoreBtn: { alignItems: 'center', paddingVertical: 6 },
   scanMoreText: { fontSize: 14, color: C.textSecondary, textDecorationLine: 'underline' },

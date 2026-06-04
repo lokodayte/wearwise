@@ -74,6 +74,14 @@ export function useScanFlow() {
     setPhotos((prev) => prev.filter((p) => p.assetId !== assetId));
   }, []);
 
+  // Add a single photo captured from the camera
+  const addCameraPhoto = useCallback((photo: SelectedPhoto) => {
+    setPhotos((prev) => {
+      if (prev.length >= 20) return prev;
+      return [...prev, photo];
+    });
+  }, []);
+
   // ── Kick off the scan pipeline ────────────────────────────────────────────
 
   const startScan = useCallback(async () => {
@@ -231,6 +239,7 @@ export function useScanFlow() {
     processedCount,
     pickPhotos,
     removePhoto,
+    addCameraPhoto,
     startScan,
     updateItem,
     confirmAll,
