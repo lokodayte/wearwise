@@ -8,7 +8,6 @@ import {
   type GarmentItem,
   type DailySuggestionWithOutfit,
 } from '../services/api';
-import { supabaseAdmin } from '../services/supabase';
 
 export type OutfitStatus = 'idle' | 'loading' | 'refreshing' | 'success' | 'error';
 
