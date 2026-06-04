@@ -12,5 +12,8 @@
     "backend": "npm run dev --workspace=backend",
     "shared:build": "npm run build --workspace=shared",
     "type-check": "npm run type-check --workspaces --if-present"
+  },
+  "dependencies": {
+    "expo-router": "~6.0.24"
   }
 }
