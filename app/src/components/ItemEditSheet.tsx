@@ -112,10 +112,9 @@ export function ItemEditSheet({ item, onSave, onClose }: Props) {
         appearsOnIndex={0}
         opacity={0.4}
         pressBehavior="close"
-        onPress={onClose}
       />
     ),
-    [onClose]
+    []
   );
 
   return (
