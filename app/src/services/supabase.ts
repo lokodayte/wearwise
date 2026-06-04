@@ -6,7 +6,7 @@ const supabaseUrl: string = Constants.expoConfig?.extra?.supabaseUrl ?? '';
 const supabaseAnonKey: string = Constants.expoConfig?.extra?.supabaseAnonKey ?? '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Check your .env file.');
+  console.warn('Missing Supabase environment variables. Auth and data features will not work.');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
