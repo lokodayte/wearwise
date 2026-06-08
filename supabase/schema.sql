@@ -396,3 +396,54 @@ $$;
 create or replace trigger on_wear_log_created
   after insert on public.wear_logs
   for each row execute procedure public.increment_times_worn();
+
+-- =============================================================================
+-- ScamShield — additional tables
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- profiles (lightweight alias to users for ScamShield onboarding)
+-- The existing `users` table serves as profiles; this view makes it easy
+-- to query by the name used in the build spec.
+-- ---------------------------------------------------------------------------
+create or replace view public.profiles as
+  select id, email, created_at from public.users;
+
+-- ---------------------------------------------------------------------------
+-- checks
+-- ---------------------------------------------------------------------------
+create table if not exists public.checks (
+  id             uuid        primary key default gen_random_uuid(),
+  user_id        uuid        not null references public.users(id) on delete cascade,
+  input_type     text        not null check (input_type in ('text', 'link')),
+  input_content  text        not null,
+  verdict        text        not null check (verdict in ('scam', 'suspicious', 'likely_safe', 'unclear')),
+  risk_score     int         not null check (risk_score between 0 and 100),
+  scam_type      text,
+  reasons        jsonb       not null default '[]'::jsonb,
+  advice         text        not null,
+  created_at     timestamptz not null default now()
+);
+
+comment on table public.checks is 'ScamShield — one row per user scam-check submission';
+
+-- Composite index for per-user history, newest first
+create index if not exists idx_checks_user_created
+  on public.checks(user_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
+-- RLS for checks
+-- ---------------------------------------------------------------------------
+alter table public.checks enable row level security;
+
+create policy "checks: select own"
+  on public.checks for select
+  using (auth.uid() = user_id);
+
+create policy "checks: insert own"
+  on public.checks for insert
+  with check (auth.uid() = user_id);
+
+create policy "checks: delete own"
+  on public.checks for delete
+  using (auth.uid() = user_id);

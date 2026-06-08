@@ -14,6 +14,7 @@ import { reportsRouter } from './routes/reports';
 import { usersRouter } from './routes/users';
 import { scanRouter } from './routes/scan';
 import { outfitEngineRouter } from './routes/outfitEngine';
+import { checksRouter } from './routes/checks';
 import { errorHandler } from './middleware/errorHandler';
 import { requireAuth } from './middleware/requireAuth';
 
@@ -56,6 +57,7 @@ app.use('/api/shopping', requireAuth, shoppingRouter);
 app.use('/api/reports', requireAuth, reportsRouter);
 app.use('/api/scan', requireAuth, scanRouter);
 app.use('/api/outfit-engine', requireAuth, outfitEngineRouter);
+app.use('/api/checks', requireAuth, checksRouter);
 
 // ---------------------------------------------------------------------------
 // Error handler (must be last)

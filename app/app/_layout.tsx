@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -15,6 +14,7 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding" />
           <Stack.Screen name="item-detail" />
           <Stack.Screen name="scan" />
+          <Stack.Screen name="scamshield" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

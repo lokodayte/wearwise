@@ -203,3 +203,36 @@ export interface RateOutfitRequest {
 export interface UpdateStyleProfileRequest {
   style_profile: Partial<StyleProfile>;
 }
+
+// =============================================================================
+// ScamShield — shared types
+// =============================================================================
+
+export type ScamVerdict = 'scam' | 'suspicious' | 'likely_safe' | 'unclear';
+export type ScamInputType = 'text' | 'link';
+
+export interface ScamResult {
+  verdict: ScamVerdict;
+  riskScore: number;
+  scamType: string | null;
+  reasons: string[];
+  advice: string;
+}
+
+export interface ScamCheck extends ScamResult {
+  id: string;
+  userId: string;
+  inputType: ScamInputType;
+  inputContent: string;
+  createdAt: string;
+}
+
+export interface CheckRequest {
+  type: ScamInputType;
+  content: string;
+}
+
+export interface CheckResponse extends ScamResult {
+  id: string;
+  createdAt: string;
+}
