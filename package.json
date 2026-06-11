@@ -14,10 +14,8 @@
     "type-check": "npm run type-check --workspaces --if-present"
   },
   "dependencies": {
+    "ajv": "^8.17.1",
     "expo": "~54.0.0",
     "expo-router": "~4.0.22"
-  },
-  "overrides": {
-    "ajv": "^8.17.1"
   }
 }
