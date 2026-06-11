@@ -21,6 +21,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { useScanFlow, type ScannedItem } from '../hooks/useScanFlow';
 import { ItemEditSheet } from '../components/ItemEditSheet';
+import { Toast } from '../components/Toast';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -97,6 +98,8 @@ export default function ScanScreen({ onDone, onManualAdd }: Props) {
   }, [scanState]);
 
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   const handleSaveEdit = useCallback(
     (patch: Partial<ScannedItem>) => {
@@ -107,9 +110,12 @@ export default function ScanScreen({ onDone, onManualAdd }: Props) {
   );
 
   const handleConfirm = useCallback(async () => {
+    const count = items.length;
     await confirmAll();
-    onDone?.();
-  }, [confirmAll, onDone]);
+    setToastMessage(`${count} item${count !== 1 ? 's' : ''} added to wardrobe`);
+    setToastVisible(true);
+    setTimeout(() => onDone?.(), 3200);
+  }, [confirmAll, items.length, onDone]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -146,6 +152,12 @@ export default function ScanScreen({ onDone, onManualAdd }: Props) {
           item={editingIndex !== null ? items[editingIndex] ?? null : null}
           onSave={handleSaveEdit}
           onClose={() => setEditingIndex(null)}
+        />
+
+        <Toast
+          message={toastMessage}
+          visible={toastVisible}
+          onHide={() => setToastVisible(false)}
         />
       </View>
     </GestureHandlerRootView>

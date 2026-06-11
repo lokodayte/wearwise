@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../src/services/supabase';
+import { registerPushToken } from '../src/services/notifications';
 
 export default function Index() {
   const [checking, setChecking] = useState(true);
@@ -10,6 +11,7 @@ export default function Index() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         router.replace('/(tabs)');
+        registerPushToken();
       } else {
         router.replace('/onboarding');
       }
@@ -18,6 +20,17 @@ export default function Index() {
       router.replace('/onboarding');
       setChecking(false);
     });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        router.replace('/(tabs)');
+        registerPushToken();
+      } else {
+        router.replace('/onboarding');
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   if (checking) {

@@ -25,6 +25,23 @@ usersRouter.get('/me', async (_req: Request, res: Response) => {
   res.json({ data, error: null });
 });
 
+// POST /api/users/push-token
+usersRouter.post('/push-token', async (req: Request, res: Response) => {
+  const token = req.body?.token;
+  if (!token || typeof token !== 'string') {
+    res.status(400).json({ data: null, error: 'token required' });
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('users')
+    .update({ push_token: token })
+    .eq('id', res.locals.userId);
+
+  if (error) { res.status(400).json({ data: null, error: error.message }); return; }
+  res.json({ data: { ok: true }, error: null });
+});
+
 // PATCH /api/users/me
 usersRouter.patch('/me', async (req: Request, res: Response) => {
   const parsed = styleProfileSchema.safeParse(req.body.style_profile);
