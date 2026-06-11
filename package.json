@@ -16,5 +16,8 @@
   "dependencies": {
     "expo": "~54.0.0",
     "expo-router": "~4.0.22"
+  },
+  "overrides": {
+    "ajv": "^8.17.1"
   }
 }

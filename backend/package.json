@@ -26,6 +26,7 @@
     "node-fetch": "^3.3.2",
     "openai": "^4.52.3",
     "sharp": "^0.33.4",
+    "ws": "^8.18.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
