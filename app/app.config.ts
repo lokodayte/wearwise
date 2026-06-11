@@ -31,7 +31,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     permissions: ['CAMERA', 'READ_EXTERNAL_STORAGE'],
   },
   plugins: [
-    'expo-router',
     'expo-secure-store',
     [
       'expo-camera',
