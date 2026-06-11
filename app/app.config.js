@@ -1,6 +1,4 @@
-import type { ConfigContext, ExpoConfig } from 'expo/config';
-
-export default ({ config }: ConfigContext): ExpoConfig => ({
+module.exports = ({ config }) => ({
   ...config,
   name: 'Wearwise',
   slug: 'wearwise',
@@ -32,24 +30,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     'expo-secure-store',
-    [
-      'expo-camera',
-      { cameraPermission: 'Wearwise needs camera access to photograph your garments.' },
-    ],
-    [
-      'expo-notifications',
-      {
-        icon: './assets/notification-icon.png',
-        color: '#6C63FF',
-      },
-    ],
+    ['expo-camera', { cameraPermission: 'Wearwise needs camera access to photograph your garments.' }],
+    ['expo-notifications', { icon: './assets/notification-icon.png', color: '#6C63FF' }],
   ],
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',
-    eas: {
-      projectId: process.env.EAS_PROJECT_ID,
-    },
+    eas: { projectId: process.env.EAS_PROJECT_ID },
   },
 });
