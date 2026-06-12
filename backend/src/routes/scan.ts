@@ -1,28 +1,9 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import multer from 'multer';
 import { removeBackground } from '../services/backgroundRemoval.service';
 import { tagGarmentWithAI } from '../services/aiTagging.service';
 import { uploadGarmentImage } from '../services/r2Storage.service';
 import { supabaseAdmin } from '../services/supabaseAdmin';
-
-// ---------------------------------------------------------------------------
-// Multer — memory storage, 10 MB per file, max 20 files
-// ---------------------------------------------------------------------------
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB
-    files: 20,
-  },
-  fileFilter(_req, file, cb) {
-    if (!file.mimetype.startsWith('image/')) {
-      cb(new Error('Only image files are accepted'));
-      return;
-    }
-    cb(null, true);
-  },
-});
 
 export const scanRouter = Router();
 
@@ -36,76 +17,52 @@ export const scanRouter = Router();
 
 // ---------------------------------------------------------------------------
 // POST /api/scan/upload
-// Accepts: multipart/form-data  field: photos[]
+// Accepts: JSON body { image: "<base64 string>" }
 // ---------------------------------------------------------------------------
-scanRouter.post(
-  '/upload',
-  upload.array('photos[]', 20),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId: string = res.locals.userId;
-    const files = req.files as Express.Multer.File[] | undefined;
+scanRouter.post('/upload', async (req: Request, res: Response): Promise<void> => {
+  const userId: string = res.locals.userId;
+  const { image } = req.body;
 
-    if (!files || files.length === 0) {
-      res.status(400).json({ data: null, error: 'No images uploaded. Use field name "photos[]".' });
-      return;
-    }
-
-    const results = await Promise.allSettled(
-      files.map((file) => processSingleFile(file, userId))
-    );
-
-    const garments: object[] = [];
-    const errors: { filename: string; error: string }[] = [];
-
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      if (result.status === 'fulfilled') {
-        garments.push(result.value);
-      } else {
-        errors.push({
-          filename: files[i].originalname,
-          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-        });
-      }
-    }
-
-    res.status(errors.length === files.length ? 422 : 201).json({
-      data: garments,
-      errors: errors.length > 0 ? errors : null,
-      processed: garments.length,
-      failed: errors.length,
-    });
+  if (!image || typeof image !== 'string') {
+    res.status(400).json({ data: null, error: 'Missing image field (base64 string)' });
+    return;
   }
-);
+
+  try {
+    const buffer = Buffer.from(image, 'base64');
+    const garment = await processSingleFile(buffer, userId);
+    res.status(201).json({ data: [garment], errors: null, processed: 1, failed: 0 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[scan] processSingleFile failed:', message);
+    res.status(422).json({ data: [], errors: [{ error: message }], processed: 0, failed: 1 });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Per-file pipeline
 // ---------------------------------------------------------------------------
-async function processSingleFile(
-  file: Express.Multer.File,
-  userId: string
-): Promise<object> {
+async function processSingleFile(buffer: Buffer, userId: string): Promise<object> {
   // Step 1 — Remove background
   let cleanBuffer: Buffer;
   let backgroundRemoved = false;
 
   try {
-    const bgResult = await removeBackground(file.buffer, file.mimetype);
+    const bgResult = await removeBackground(buffer, 'image/jpeg');
     cleanBuffer = bgResult.buffer;
     backgroundRemoved = bgResult.backgroundRemoved;
   } catch (err) {
-    console.error('[scan] background removal failed, using original:', err);
-    // Don't abort — use the raw image so tagging + storage still work
-    cleanBuffer = file.buffer;
+    console.warn('[scan] background removal failed, using original:', err);
+    cleanBuffer = buffer;
   }
 
-  // Steps 2 + 3 — AI tagging and R2 upload run in parallel
+  // Steps 2 + 3 — AI tagging and storage upload in parallel
   const [tags, imageUrl] = await Promise.all([
     tagGarmentWithAI(cleanBuffer),
     uploadGarmentImage(cleanBuffer, userId),
   ]);
 
-  // Step 4 — Persist garment record in Supabase
+  // Step 4 — Persist garment record
   const { data: garment, error: dbError } = await supabaseAdmin
     .from('garments')
     .insert({
@@ -125,13 +82,7 @@ async function processSingleFile(
     .select()
     .single();
 
-  if (dbError) {
-    throw new Error(`DB insert failed: ${dbError.message}`);
-  }
+  if (dbError) throw new Error(`DB insert failed: ${dbError.message}`);
 
-  return {
-    ...garment,
-    ai_tags: tags,
-    background_removed: backgroundRemoved,
-  };
+  return { ...garment, ai_tags: tags, background_removed: backgroundRemoved };
 }

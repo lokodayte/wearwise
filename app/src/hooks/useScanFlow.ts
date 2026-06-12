@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '../services/supabase';
 import Constants from 'expo-constants';
 
@@ -124,17 +125,17 @@ export function useScanFlow() {
       );
 
       try {
-        const formData = new FormData();
-        formData.append('photos[]', {
-          uri: photos[i].uri,
-          name: `photo_${i}.jpg`,
-          type: 'image/jpeg',
-        } as unknown as Blob);
+        const base64 = await FileSystem.readAsStringAsync(photos[i].uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
 
         const res = await fetch(`${apiUrl}/api/scan/upload`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ image: base64 }),
         });
 
         const json = await res.json();
