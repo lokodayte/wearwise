@@ -4,6 +4,8 @@ import { supabase } from './supabase';
 const BASE_URL: string =
   Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
 
+const TIMEOUT_MS = 15_000;
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const {
     data: { session },
@@ -21,16 +23,27 @@ export async function request<T>(
   body?: unknown
 ): Promise<T> {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  const json = await res.json();
-  if (!res.ok || json.error) {
-    throw new Error(json.error ?? `HTTP ${res.status}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      throw new Error(json.error ?? `HTTP ${res.status}`);
+    }
+    return json.data as T;
+  } catch (err: any) {
+    if (err.name === 'AbortError') throw new Error('Request timed out. Check your connection.');
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return json.data as T;
 }
 
 // ── Suggestions ──────────────────────────────────────────────────────────────
@@ -80,7 +93,7 @@ export const garmentsApi = {
   },
 };
 
-// ── Shared local types (light duplicates of shared package for the API layer) ──
+// ── Shared local types ────────────────────────────────────────────────────────
 
 export interface GarmentItem {
   id: string;

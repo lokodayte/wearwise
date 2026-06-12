@@ -60,3 +60,31 @@ usersRouter.patch('/me', async (req: Request, res: Response) => {
   if (error) { res.status(400).json({ data: null, error: error.message }); return; }
   res.json({ data, error: null });
 });
+
+// DELETE /api/users/me
+usersRouter.delete('/me', async (_req: Request, res: Response) => {
+  const userId = res.locals.userId;
+
+  // Delete all user data first (RLS cascades won't apply for admin client)
+  await Promise.allSettled([
+    supabaseAdmin.from('wear_logs').delete().eq('user_id', userId),
+    supabaseAdmin.from('daily_suggestions').delete().eq('user_id', userId),
+    supabaseAdmin.from('shopping_recs').delete().eq('user_id', userId),
+    supabaseAdmin.from('style_reports').delete().eq('user_id', userId),
+    supabaseAdmin.from('outfits').delete().eq('user_id', userId),
+    supabaseAdmin.from('garments').delete().eq('user_id', userId),
+  ]);
+
+  // Delete from users table
+  await supabaseAdmin.from('users').delete().eq('id', userId);
+
+  // Delete the auth user
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+  if (error) {
+    res.status(500).json({ data: null, error: 'Failed to delete account' });
+    return;
+  }
+
+  res.json({ data: { ok: true }, error: null });
+});
+

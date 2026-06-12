@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SkeletonBox } from '../components/SkeletonBox';
-import { useOutfitSuggestion } from '../hooks/useOutfitSuggestion';
+import { useOutfitSuggestion, type AlternativeOutfit } from '../hooks/useOutfitSuggestion';
 import type { GarmentItem } from '../services/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,8 +174,11 @@ export default function HomeScreen() {
           disabled={isLoading || isRefreshing}
         />
 
-        {/* ── 5. Alternative outfits placeholder ── */}
-        <AlternativesRow isLoading={isLoading} />
+        {/* ── 5. Alternative outfits ── */}
+        <AlternativesRow
+          alternatives={state.alternatives}
+          isLoading={isLoading || state.alternativesLoading}
+        />
 
         {/* ── 6. Forgotten items ── */}
         <ForgottenRow items={state.forgottenItems} isLoading={isLoading} />
@@ -429,7 +432,14 @@ function ActionButton({ onPress, emoji, label, color, disabled }: ActionButtonPr
 
 // ── Alternatives row ──────────────────────────────────────────────────────────
 
-function AlternativesRow({ isLoading }: { isLoading: boolean }) {
+interface AlternativesRowProps {
+  alternatives: AlternativeOutfit[];
+  isLoading: boolean;
+}
+
+function AlternativesRow({ alternatives, isLoading }: AlternativesRowProps) {
+  if (!isLoading && alternatives.length === 0) return null;
+
   return (
     <View style={styles.section}>
       <Text style={styles.sectionLabel}>Alternatives</Text>
@@ -439,18 +449,51 @@ function AlternativesRow({ isLoading }: { isLoading: boolean }) {
         contentContainerStyle={styles.horizontalList}
       >
         {isLoading
-          ? [0, 1, 2, 3].map((i) => (
-              <SkeletonBox key={i} width={120} height={150} borderRadius={12} style={styles.altCardSkeleton} />
+          ? [0, 1].map((i) => (
+              <SkeletonBox key={i} width={130} height={160} borderRadius={12} style={styles.altCardSkeleton} />
             ))
-          : [0, 1, 2, 3].map((i) => (
-              <View key={i} style={styles.altCard}>
-                <View style={styles.altCardInner}>
-                  <Text style={styles.altCardPlaceholder}>✦</Text>
-                </View>
-                <Text style={styles.altCardLabel}>Outfit {i + 2}</Text>
-              </View>
+          : alternatives.map((alt, i) => (
+              <AlternativeCard key={i} alt={alt} />
             ))}
       </ScrollView>
+    </View>
+  );
+}
+
+function AlternativeCard({ alt }: { alt: AlternativeOutfit }) {
+  const preview = alt.garments.slice(0, 2);
+  return (
+    <View style={styles.altCard}>
+      <View style={styles.altCardInner}>
+        {preview.length > 0 ? (
+          <View style={styles.altCardImgs}>
+            {preview.map((g) => (
+              <AltGarmentThumb key={g.id} garment={g} />
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.altCardPlaceholder}>✦</Text>
+        )}
+      </View>
+      <Text style={styles.altCardLabel} numberOfLines={1}>{alt.occasion}</Text>
+    </View>
+  );
+}
+
+function AltGarmentThumb({ garment }: { garment: GarmentItem }) {
+  const [err, setErr] = useState(false);
+  return (
+    <View style={styles.altThumb}>
+      {garment.image_url && !err ? (
+        <Image
+          source={{ uri: garment.image_url }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+          onError={() => setErr(true)}
+        />
+      ) : (
+        <Text style={{ fontSize: 18 }}>{categoryEmoji(garment.category)}</Text>
+      )}
     </View>
   );
 }
@@ -723,17 +766,32 @@ const styles = StyleSheet.create({
 
   // ── Alternative cards ────────────────────────────
   altCard: {
-    width: 120,
+    width: 130,
     alignItems: 'center',
   },
   altCardInner: {
-    width: 120,
-    height: 150,
+    width: 130,
+    height: 160,
     borderRadius: 12,
     backgroundColor: COLORS.card,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     ...SHADOW,
+  },
+  altCardImgs: {
+    width: '100%',
+    height: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  altThumb: {
+    width: '50%',
+    height: '100%',
+    backgroundColor: COLORS.chipBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   altCardPlaceholder: {
     fontSize: 24,
@@ -743,6 +801,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     color: COLORS.textTertiary,
+    maxWidth: 130,
+    textAlign: 'center',
   },
   altCardSkeleton: {
     marginRight: 0,

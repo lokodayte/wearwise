@@ -33,3 +33,33 @@ outfitEngineRouter.post('/generate', async (req: Request, res: Response): Promis
     res.status(422).json({ data: null, error: message });
   }
 });
+
+// POST /api/outfit-engine/alternatives
+// Generates multiple alternative outfits in parallel for different occasions
+outfitEngineRouter.post('/alternatives', async (req: Request, res: Response): Promise<void> => {
+  const base = generateSchema.safeParse(req.body);
+  if (!base.success) {
+    res.status(400).json({ data: null, error: base.error.message });
+    return;
+  }
+
+  const occasions = ['smart casual', 'formal'];
+  const date = base.data.date ?? new Date().toISOString().slice(0, 10);
+
+  const results = await Promise.allSettled(
+    occasions.map((occ) =>
+      generateOutfit(res.locals.userId, {
+        weatherTemp: base.data.weatherTemp,
+        weatherDesc: base.data.weatherDesc,
+        occasion: occ,
+        date,
+      })
+    )
+  );
+
+  const alternatives = results
+    .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+    .map((r) => r.value);
+
+  res.json({ data: alternatives, error: null });
+});
