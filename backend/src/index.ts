@@ -66,6 +66,18 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Wearwise backend running on http://localhost:${PORT}`);
+
+  // Warn about missing optional integrations so failures are obvious
+  const missing: string[] = [];
+  if (!process.env.OPENAI_API_KEY)       missing.push('OPENAI_API_KEY (AI tagging disabled — fallback tags used)');
+  if (!process.env.ANTHROPIC_API_KEY)    missing.push('ANTHROPIC_API_KEY (outfit explanations disabled)');
+  if (!process.env.R2_ENDPOINT)          missing.push('R2_ENDPOINT (using Supabase Storage fallback for images)');
+
+  if (missing.length) {
+    console.warn('\n⚠️  Missing env vars:');
+    missing.forEach((m) => console.warn(`   • ${m}`));
+    console.warn('');
+  }
 });
 
 export default app;

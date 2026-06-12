@@ -26,6 +26,14 @@ const upload = multer({
 
 export const scanRouter = Router();
 
+// Ensure the Supabase Storage bucket exists (used as R2 fallback)
+(async () => {
+  const { error } = await supabaseAdmin.storage.createBucket('garments', { public: true });
+  if (error && !error.message.includes('already exists')) {
+    console.warn('[scan] Could not create garments storage bucket:', error.message);
+  }
+})();
+
 // ---------------------------------------------------------------------------
 // POST /api/scan/upload
 // Accepts: multipart/form-data  field: photos[]
